@@ -1,0 +1,264 @@
+{
+  "name": "Simple RAG with Pinecone and Gemini",
+  "nodes": [
+    {
+      "id": "p-form",
+      "name": "Upload Document Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        -416,
+        464
+      ],
+      "parameters": {
+        "formTitle": "Upload a document",
+        "formDescription": "Upload a .docx file to add it to the knowledge base.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Document",
+              "fieldType": "file",
+              "fieldName": "Document",
+              "multipleFiles": false,
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {
+          "path": "rag-upload",
+          "respondWithOptions": {
+            "values": {
+              "formSubmittedText": "Document received and indexed."
+            }
+          }
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nfor (const item of items) {\n  if (!item.binary || !item.binary.Document) { throw new Error('No file named Document was uploaded.'); }\n  item.binary.Document.mimeType = 'application/zip';\n  item.binary.Document.fileExtension = 'zip';\n  item.binary.Document.fileName = 'document.zip';\n}\nreturn items;"
+      },
+      "id": "p-label",
+      "name": "Label As Zip",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -192,
+        464
+      ]
+    },
+    {
+      "id": "p-unzip",
+      "name": "Unzip Document",
+      "type": "n8n-nodes-base.compression",
+      "typeVersion": 1.1,
+      "position": [
+        32,
+        464
+      ],
+      "parameters": {
+        "binaryPropertyName": "Document"
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst binary = item.binary || {};\nlet xml = '';\nfor (const key of Object.keys(binary)) {\n  const name = binary[key].fileName || '';\n  if (name.endsWith('word/document.xml') || name === 'document.xml') {\n    const buf = await this.helpers.getBinaryDataBuffer(0, key);\n    xml = buf.toString('utf8');\n    break;\n  }\n}\nif (!xml) { throw new Error('Could not find word/document.xml. Please upload a .docx file.'); }\nconst text = xml\n  .replace(/<\\/w:p>/g, '\\n')\n  .replace(/<[^>]+>/g, '')\n  .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '\"').replace(/&apos;/g, \"'\")\n  .replace(/\\n{3,}/g, '\\n\\n')\n  .trim();\nconst chunkSize = 1000;\nconst overlap = 200;\nconst docs = [];\nconst source = (item.json.Document && item.json.Document.filename) || 'upload';\nconst runId = Date.now();\nfor (let start = 0, i = 0; start < text.length; start += chunkSize - overlap, i++) {\n  docs.push({ _id: runId + '-' + i, chunk_text: text.slice(start, start + chunkSize), source: source });\n}\nreturn [{ json: { documents: docs } }];"
+      },
+      "id": "p-chunk",
+      "name": "Prepare Chunks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        656,
+        512
+      ]
+    },
+    {
+      "id": "p-add",
+      "name": "Add to Pinecone",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        480,
+        16
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR-INDEX-HOST.svc.YOUR-REGION.pinecone.io/namespaces/rag-docs/documents/upsert",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "pineconeApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Pinecone-Api-Version",
+              "value": "2026-07"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ documents: $json.documents }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "p-chat",
+      "name": "Chat with Documents",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.5,
+      "position": [
+        0,
+        848
+      ],
+      "parameters": {
+        "options": {
+          "responseMode": "streaming"
+        }
+      }
+    },
+    {
+      "id": "p-agent",
+      "name": "RAG Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        256,
+        848
+      ],
+      "parameters": {
+        "options": {
+          "systemMessage": "You answer questions using the uploaded documents. Always call the search_documents tool first, then answer only from the returned passages. If the answer is not in the documents, say you could not find it."
+        }
+      }
+    },
+    {
+      "id": "p-llm",
+      "name": "Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        224,
+        1072
+      ],
+      "parameters": {
+        "modelName": "models/gemini-3.8-flash",
+        "options": {}
+      }
+    },
+    {
+      "id": "p-tool",
+      "name": "search_documents",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.5,
+      "position": [
+        352,
+        1072
+      ],
+      "parameters": {
+        "toolDescription": "Search the uploaded documents for passages relevant to the user question. Pass the question or key search phrase as the query.",
+        "method": "POST",
+        "url": "https://YOUR-INDEX-HOST.svc.YOUR-REGION.pinecone.io/namespaces/rag-docs/documents/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "pineconeApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Pinecone-Api-Version",
+              "value": "2026-07"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ top_k: 5, include_fields: [\"chunk_text\", \"title\"], score_by: [{ type: \"embed\", field: \"chunk_text\", query: $fromAI(\"query\", \"The question or search phrase to look up in the documents\", \"string\") }] }) }}",
+        "options": {},
+        "optimizeResponse": true,
+        "dataField": "matches"
+      }
+    }
+  ],
+  "connections": {
+    "Upload Document Form": {
+      "main": [
+        [
+          {
+            "node": "Label As Zip",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Label As Zip": {
+      "main": [
+        [
+          {
+            "node": "Unzip Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unzip Document": {
+      "main": [
+        [
+          {
+            "node": "Prepare Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Chunks": {
+      "main": [
+        [
+          {
+            "node": "Add to Pinecone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat with Documents": {
+      "main": [
+        [
+          {
+            "node": "RAG Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "RAG Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "search_documents": {
+      "ai_tool": [
+        [
+          {
+            "node": "RAG Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

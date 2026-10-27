@@ -1,0 +1,450 @@
+{
+  "name": "Personal Voice Agent - Tasks and Day Planner",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## START HERE\n\nPersonal voice agent backend.\n\nYou call a Vapi phone number. Vapi talks to Gemini and calls these 3 webhooks as tools.\n\n**What you must set up (all free tiers):**\n1. Vapi account (vapi.ai) - free number + 60 min/month\n2. Google AI Studio key (aistudio.google.com) - free Gemini\n3. Google Sheet named 'Voice Agent Tasks', tab 'Tasks', headers: id, task, priority, due, status\n4. n8n credentials: Google Sheets OAuth2\n\nThen activate this workflow and paste the 3 production webhook URLs into Vapi tools.",
+        "height": 380,
+        "width": 460,
+        "color": 4
+      },
+      "id": "n-start",
+      "name": "Sticky Note - Start Here",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -96,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## API KEY 1: GEMINI\n\nGo to aistudio.google.com > Get API key (free).\n\nIn n8n: Credentials > New > Header Auth\nName: x-goog-api-key\nValue: YOUR_KEY\n\nAlso paste the same key in Vapi > Provider Keys > Google.\n\nModel used for planning: gemini-2.5-flash.",
+        "height": 300,
+        "width": 380,
+        "color": 6
+      },
+      "id": "n-gemini",
+      "name": "Sticky Note - Gemini Key",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## API KEY 2: VAPI\n\nvapi.ai > sign up (no card) > Assistants > Create.\n- Model: Google Gemini\n- Voice: default or free ElevenLabs/Cartesia\n- Add 3 tools = webhook URLs from the nodes below (use PRODUCTION URL, not test)\n- Phone Numbers > Create free US number > attach assistant\n\nThen just call that number from your phone.",
+        "height": 320,
+        "width": 380,
+        "color": 5
+      },
+      "id": "n-vapi",
+      "name": "Sticky Note - Vapi Setup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        768,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## GOOGLE SHEET\n\nCreate sheet: Voice Agent Tasks\nTab: Tasks\nRow 1 headers: id | task | priority | due | status\n\nIn each Google Sheets node below, pick your credential and select this sheet.",
+        "height": 200,
+        "width": 380,
+        "color": 3
+      },
+      "id": "n-sheet",
+      "name": "Sticky Note - Sheet",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -112,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "voice-add-task",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "n-wh-add",
+      "name": "Webhook - Add Task",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        64,
+        576
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst call = body.message || body;\nconst toolCall = (call.toolCallList || call.toolCalls || [])[0] || {};\nconst args = toolCall.arguments || toolCall.function?.arguments || body;\nconst parsed = typeof args === 'string' ? JSON.parse(args) : args;\nreturn [{ json: {\n  toolCallId: toolCall.id || 'none',\n  id: Date.now().toString(),\n  task: parsed.task || 'Untitled',\n  priority: parsed.priority || 'medium',\n  due: parsed.due || 'today',\n  status: 'todo'\n}}];"
+      },
+      "id": "n-parse",
+      "name": "Parse Add Args",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        576
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "Tasks"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $json.id }}",
+            "task": "={{ $json.task }}",
+            "priority": "={{ $json.priority }}",
+            "due": "={{ $json.due }}",
+            "status": "={{ $json.status }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "n-append",
+      "name": "Sheet - Append Task",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        496,
+        576
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { results: [ { toolCallId: $('Parse Add Args').item.json.toolCallId, result: 'Added task: ' + $('Parse Add Args').item.json.task } ] } }}",
+        "options": {}
+      },
+      "id": "n-r-add",
+      "name": "Respond - Added",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        576
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "voice-list-tasks",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "n-wh-list",
+      "name": "Webhook - List Tasks",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        64,
+        816
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "Tasks"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "status",
+              "lookupValue": "todo"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "n-get",
+      "name": "Sheet - Get Open Tasks",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        288,
+        816
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const tc = $('Webhook - List Tasks').first().json.body?.message?.toolCallList?.[0]?.id || 'none';\nconst rows = $input.all().map(i => i.json).filter(r => r.task);\nconst text = rows.length ? rows.map(r => `${r.task} (${r.priority}, due ${r.due})`).join('; ') : 'No open tasks.';\nreturn [{ json: { toolCallId: tc, text } }];"
+      },
+      "id": "n-format",
+      "name": "Format Task List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        496,
+        816
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { results: [ { toolCallId: $json.toolCallId, result: $json.text } ] } }}",
+        "options": {}
+      },
+      "id": "n-r-list",
+      "name": "Respond - Tasks",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        816
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "voice-plan-day",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "n-wh-plan",
+      "name": "Webhook - Plan Day",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        64,
+        1056
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": "Tasks"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "status",
+              "lookupValue": "todo"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "n-get-plan",
+      "name": "Sheet - Open Tasks for Planning",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        288,
+        1056
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const wh = $('Webhook - Plan Day').first().json.body || {};\nconst call = wh.message?.toolCallList?.[0] || {};\nlet args = call.arguments || {};\nif (typeof args === 'string') args = JSON.parse(args);\nconst rows = $input.all().map(i => i.json).filter(r => r.task);\nconst list = rows.map(r => `- ${r.task} | priority ${r.priority} | due ${r.due}`).join('\\n') || 'No tasks';\nconst prompt = `You are a personal day planner. Wake time: ${args.wake_time || '7am'}. Available hours: ${args.available_hours || 8}.\\nOpen tasks:\\n${list}\\n\\nCreate a realistic time-blocked schedule with breaks. Put high priority first. Reply in 4 to 6 short spoken sentences, no lists, no markdown.`;\nreturn [{ json: { toolCallId: call.id || 'none', prompt } }];"
+      },
+      "id": "n-prompt",
+      "name": "Build Planning Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        496,
+        1056
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ contents: [ { parts: [ { text: $json.prompt } ] } ] }) }}",
+        "options": {}
+      },
+      "id": "n-gem",
+      "name": "Gemini - Plan Day",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        1056
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { results: [ { toolCallId: $('Build Planning Prompt').item.json.toolCallId, result: $json.candidates[0].content.parts[0].text } ] } }}",
+        "options": {}
+      },
+      "id": "n-r-plan",
+      "name": "Respond - Plan",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        944,
+        1056
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## UPGRADE PATH: TRUE GEMINI LIVE AUDIO\n\nVapi uses text LLM + TTS. For native audio-to-audio with Gemini Live, bridge phone audio over WebSocket:\n\nTwilio number > Media Streams > small Node/Python server (Pipecat or LiveKit Agents) > Gemini Live API.\n\nKeep THIS n8n workflow as the tool backend: have the Live session call these same webhooks as function calls.",
+        "height": 340,
+        "width": 420,
+        "color": 2
+      },
+      "id": "n-upgrade",
+      "name": "Sticky Note - Upgrade Path",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1184,
+        576
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook - Add Task": {
+      "main": [
+        [
+          {
+            "node": "Parse Add Args",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Add Args": {
+      "main": [
+        [
+          {
+            "node": "Sheet - Append Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet - Append Task": {
+      "main": [
+        [
+          {
+            "node": "Respond - Added",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook - List Tasks": {
+      "main": [
+        [
+          {
+            "node": "Sheet - Get Open Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet - Get Open Tasks": {
+      "main": [
+        [
+          {
+            "node": "Format Task List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Task List": {
+      "main": [
+        [
+          {
+            "node": "Respond - Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook - Plan Day": {
+      "main": [
+        [
+          {
+            "node": "Sheet - Open Tasks for Planning",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sheet - Open Tasks for Planning": {
+      "main": [
+        [
+          {
+            "node": "Build Planning Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Planning Prompt": {
+      "main": [
+        [
+          {
+            "node": "Gemini - Plan Day",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini - Plan Day": {
+      "main": [
+        [
+          {
+            "node": "Respond - Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
