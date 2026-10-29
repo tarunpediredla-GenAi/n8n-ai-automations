@@ -1,6 +1,6 @@
 # 🤖 n8n AI Automations
 
-**Voice agents, RAG chatbots and AI workflows built with n8n, Gemini, Vapi, Pinecone and Supabase.**
+**Voice agents, RAG chatbots and AI workflows built with n8n, Gemini, Twilio, Vapi, Pinecone and Supabase.**
 
 Built by **Tarun Pediredla**, Full Stack Python & GenAI Engineer.
 
@@ -30,6 +30,7 @@ I build custom AI automations for businesses: voice assistants, document Q&A cha
 
 | Project | What it does | Stack | Folder |
 |---|---|---|---|
+| 📞 **AI Voice Task Planner (Twilio)** | Scheduled voice calls, add and list tasks, ask for time, AI day plans | n8n · Twilio · Gemini · Google Sheets | [`ai-voice-task-planner-twilio`](workflows/ai-voice-task-planner-twilio) |
 | 🎙️ **Voice Agent: Tasks & Day Planner** | Call a phone number, add tasks by voice, hear your to-do list, get an AI-planned day | n8n · Vapi · Gemini · Google Sheets | [`voice-agent-task-planner`](workflows/voice-agent-task-planner) |
 | 📄 **RAG Chatbot: Pinecone + Gemini** | Upload a document, then chat with it. Answers come only from your content | n8n · Pinecone · Gemini | [`rag-pinecone-gemini`](workflows/rag-pinecone-gemini) |
 | 🧠 **Knowledge-Base Chat Agent** | Public chat agent with long-term memory and a vector knowledge base | n8n · Gemini · Supabase · Postgres | [`knowledge-base-chat-agent`](workflows/knowledge-base-chat-agent) |
@@ -92,7 +93,7 @@ flowchart LR
 **Automation:** n8n · Webhooks · Form and Chat triggers
 **AI:** Google Gemini · LLM agents with tool use · RAG · embeddings
 **Data:** Pinecone · Supabase (pgvector) · PostgreSQL · Google Sheets
-**Voice:** Vapi (phone number + speech) with an upgrade path to Gemini Live
+**Voice:** Twilio (live call, speech Gather), Vapi (separate demo) and an upgrade path to Gemini Live
 **Languages:** Python · JavaScript/TypeScript
 
 ---
@@ -115,6 +116,9 @@ n8n-ai-automations/
 ├── LICENSE
 ├── .gitignore
 └── workflows/
+    ├── ai-voice-task-planner-twilio/
+    │   ├── workflow.json
+    │   └── README.md
     ├── voice-agent-task-planner/
     │   ├── workflow.json
     │   └── README.md
